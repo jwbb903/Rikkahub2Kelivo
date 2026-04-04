@@ -1,0 +1,29 @@
+# 编译产物
+backup-converter
+*.exe
+*.exe~
+
+# Go 构建目录
+/bin/
+
+# 依赖目录
+/vendor/
+
+# 临时文件
+*.tmp
+/tmp/
+
+# IDE 文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 输出备份文件
+*_converted_*.zip
+output*.zip
