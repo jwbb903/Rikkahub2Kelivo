@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Kelivo ↔ RikkaHub 备份转换器</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb', // blue-600
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Inter & JetBrains Mono Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-slate-100 text-slate-900 h-screen overflow-hidden flex antialiased">
+
+<!-- Sidebar -->
+<aside class="w-64 bg-white border-r border-slate-200 flex flex-col shadow-sm z-10 hidden md:flex">
+    <div class="p-6 border-b border-slate-200 flex items-center gap-3">
+        <i data-lucide="arrow-left-right" class="text-blue-600"></i>
+        <h1 class="font-bold text-lg text-slate-800">备份转换器</h1>
+    </div>
+    
+    <nav class="flex-1 overflow-y-auto py-4 space-y-1 px-3">
+        <a href="#" class="nav-item active group" data-page="overview">
+            <i data-lucide="layout-dashboard" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
+            <span class="flex-1">概览</span>
+        </a>
+        <a href="#" class="nav-item group" data-page="providers">
+            <i data-lucide="server" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
+            <span class="flex-1">提供商</span>
+            <span class="badge" id="badge-providers">0</span>
+        </a>
+        <a href="#" class="nav-item group" data-page="assistants">
+            <i data-lucide="bot" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
+            <span class="flex-1">助手</span>
+            <span class="badge" id="badge-assistants">0</span>
+        </a>
+        <a href="#" class="nav-item group" data-page="mcps">
+            <i data-lucide="plug" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
+            <span class="flex-1">MCP 服务器</span>
+            <span class="badge" id="badge-mcps">0</span>
+        </a>
+        <a href="#" class="nav-item group" data-page="conversations">
+            <i data-lucide="message-square" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
+            <span class="flex-1">聊天会话</span>
+            <span class="badge" id="badge-conversations">0</span>
+        </a>
+        <a href="#" class="nav-item group" data-page="lorebooks">
+            <i data-lucide="book-open" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
+            <span class="flex-1">世界书 / 设定</span>
+            <span class="badge" id="badge-lorebooks">0</span>
+        </a>
+        <a href="#" class="nav-item group" data-page="quickmsgs">
+            <i data-lucide="zap" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
+            <span class="flex-1">快捷短语</span>
+            <span class="badge" id="badge-quickmsgs">0</span>
+        </a>
+        <a href="#" class="nav-item group" data-page="injections">
+            <i data-lucide="syringe" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
+            <span class="flex-1">指令注入</span>
+            <span class="badge" id="badge-injections">0</span>
+        </a>
+    </nav>
+</aside>
+
+<!-- Main Content -->
+<main class="flex-1 flex flex-col overflow-hidden bg-slate-50 relative">
+    <!-- Top Bar -->
+    <header class="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shadow-sm shrink-0 z-10">
+        <div class="flex items-center gap-4">
+            <div class="relative overflow-hidden inline-block group">
+                <button class="btn-primary flex items-center gap-2">
+                    <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+                    <span class="hidden md:inline">选择备份文件 (.zip)</span>
+                    <span class="md:hidden">上传</span>
+                </button>
+                <input type="file" id="file-input" accept=".zip" class="absolute inset-0 opacity-0 cursor-pointer text-[100px]">
+            </div>
+            <div id="status-container" class="hidden md:flex items-center gap-2 text-slate-500 text-sm font-medium">
+                <i data-lucide="info" class="w-4 h-4"></i>
+                <span id="status-text">未上传文件</span>
+            </div>
+        </div>
+        <div class="flex gap-2 md:gap-3">
+            <button id="btn-k2r" class="btn-outline flex items-center gap-2" disabled>
+                <i data-lucide="arrow-right-circle" class="w-4 h-4"></i>
+                <span class="hidden md:inline">转为 RikkaHub</span>
+            </button>
+            <button id="btn-r2k" class="btn-outline flex items-center gap-2" disabled>
+                <i data-lucide="arrow-left-circle" class="w-4 h-4"></i>
+                <span class="hidden md:inline">转为 Kelivo</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Pages Area -->
+    <div class="flex-1 overflow-y-auto p-4 md:p-8 relative" id="paste-zone">
+        
+        <!-- Overview Page -->
+        <div id="page-overview" class="page active max-w-4xl mx-auto mt-4 md:mt-10">
+            <div class="text-center mb-12">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-50 text-blue-600 mb-6 border border-blue-100 shadow-sm">
+                    <i data-lucide="database" class="w-8 h-8"></i>
+                </div>
+                <h2 class="text-3xl font-bold text-slate-900 mb-4">欢迎使用备份转换器</h2>
+                <p class="text-slate-500 text-lg">点击上方按钮或拖拽 Kelivo / RikkaHub 备份 zip 文件到此区域，系统将自动识别解析。</p>
+            </div>
+            
+            <div id="overview-info" class="hidden">
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="file-check-2" class="text-blue-600 w-6 h-6"></i>
+                            <h3 class="font-bold text-lg text-slate-800">备份详情</h3>
+                        </div>
+                        <span class="px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm font-medium border border-green-200" id="overview-type"></span>
+                    </div>
+                    <div class="p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6" id="overview-details">
+                        <!-- Dynamic Content -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Providers Page -->
+        <div id="page-providers" class="page hidden">
+            <h2 class="page-title">提供商</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="list-providers"></div>
+        </div>
+
+        <!-- Assistants Page -->
+        <div id="page-assistants" class="page hidden">
+            <h2 class="page-title">助手</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="list-assistants"></div>
+        </div>
+
+        <!-- MCP Page -->
+        <div id="page-mcps" class="page hidden">
+            <h2 class="page-title">MCP 服务器</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="list-mcps"></div>
+        </div>
+
+        <!-- Conversations Page -->
+        <div id="page-conversations" class="page hidden max-w-5xl mx-auto">
+            <h2 class="page-title">聊天会话</h2>
+            <div class="space-y-4" id="list-conversations"></div>
+        </div>
+        
+        <!-- Chat View Page -->
+        <div id="page-chat-view" class="page hidden max-w-5xl mx-auto h-full flex flex-col">
+            <div class="flex items-center gap-4 mb-6 pb-4 border-b border-slate-200 shrink-0">
+                <button class="btn-ghost flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors px-3 py-2 rounded-lg hover:bg-slate-100" id="btn-back-chats">
+                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                    返回
+                </button>
+                <h2 class="text-xl font-bold text-slate-800 truncate flex-1" id="chat-title">会话内容</h2>
+            </div>
+            <div class="flex-1 overflow-y-auto pr-4 space-y-6 pb-10" id="chat-messages-container"></div>
+        </div>
+
+        <!-- Lorebooks Page -->
+        <div id="page-lorebooks" class="page hidden">
+            <h2 class="page-title">世界书 / 设定集</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="list-lorebooks"></div>
+        </div>
+
+        <!-- Quick Msgs Page -->
+        <div id="page-quickmsgs" class="page hidden">
+            <h2 class="page-title">快捷短语</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="list-quickmsgs"></div>
+        </div>
+
+        <!-- Injections Page -->
+        <div id="page-injections" class="page hidden">
+            <h2 class="page-title">指令注入</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="list-injections"></div>
+        </div>
+    </div>
+    
+    <!-- Mobile Tab Bar -->
+    <nav class="md:hidden flex bg-white border-t border-slate-200 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 pb-safe">
+        <div class="flex w-full overflow-x-auto hide-scrollbar">
+            <a href="#" class="mobile-nav-item active" data-page="overview">
+                <i data-lucide="layout-dashboard" class="w-5 h-5 mb-1"></i>
+                <span class="text-[10px]">概览</span>
+            </a>
+            <a href="#" class="mobile-nav-item" data-page="providers">
+                <i data-lucide="server" class="w-5 h-5 mb-1"></i>
+                <span class="text-[10px]">提供商</span>
+            </a>
+            <a href="#" class="mobile-nav-item" data-page="assistants">
+                <i data-lucide="bot" class="w-5 h-5 mb-1"></i>
+                <span class="text-[10px]">助手</span>
+            </a>
+            <a href="#" class="mobile-nav-item" data-page="mcps">
+                <i data-lucide="plug" class="w-5 h-5 mb-1"></i>
+                <span class="text-[10px]">MCP</span>
+            </a>
+            <a href="#" class="mobile-nav-item" data-page="conversations">
+                <i data-lucide="message-square" class="w-5 h-5 mb-1"></i>
+                <span class="text-[10px]">会话</span>
+            </a>
+        </div>
+    </nav>
+</main>
+
+<!-- Loading Overlay -->
+<div id="loading" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm hidden justify-center items-center z-50 transition-opacity">
+    <div class="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center gap-4">
+        <i data-lucide="loader-2" class="w-10 h-10 text-blue-600 animate-spin"></i>
+        <span class="text-slate-700 font-medium" id="loading-text">处理中...</span>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+
+<!-- Scripts -->
+<script src="js/api.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+<script>
+    lucide.createIcons();
+</script>
+
+</body>
+</html>
