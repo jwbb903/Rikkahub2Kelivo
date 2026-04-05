@@ -13,7 +13,7 @@ import (
 	"github.com/converter/backup-converter/writer"
 )
 
-const version = "1.2.0"
+const version = "1.3.0"
 
 func printUsage() {
 	fmt.Printf(`备份转换工具 v%s
