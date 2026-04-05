@@ -10,12 +10,15 @@
 - 世界书/快捷短语转换
 - 聊天会话+记录转换（含多版本分支）
 - 双向转换：Kelivo ↔ RikkaHub
+- 支持直接开启网页服务，在浏览器中上传、查看并转换备份
 
 ## 下载
 
 从 [Releases](https://github.com/jwbb903/Rikkahub2Kelivo/releases) 下载预编译的二进制文件。
 
 ## 快速开始
+
+支持开启网页服务，执行 `./backup-converter serve -p 8080` 后即可在浏览器中使用可视化界面进行转换。
 
 ### 交互式脚本（推荐）
 
