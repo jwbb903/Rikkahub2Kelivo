@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -20,18 +21,6 @@ import (
 //go:embed web/index.html
 var webUI []byte
 
-//go:embed web/css/style.css
-var cssData []byte
-
-//go:embed web/js/api.js
-var jsApi []byte
-
-//go:embed web/js/render.js
-var jsRender []byte
-
-//go:embed web/js/app.js
-var jsApp []byte
-
 type Server struct {
 	mu        sync.RWMutex
 	backupType string
@@ -45,17 +34,15 @@ func StartServer(port string) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", s.handleIndex)
-	mux.HandleFunc("/css/style.css", s.handleStatic(cssData, "text/css"))
-	mux.HandleFunc("/js/api.js", s.handleStatic(jsApi, "application/javascript"))
-	mux.HandleFunc("/js/render.js", s.handleStatic(jsRender, "application/javascript"))
-	mux.HandleFunc("/js/app.js", s.handleStatic(jsApp, "application/javascript"))
 	mux.HandleFunc("/api/upload", s.handleUpload)
+	mux.HandleFunc("/api/providers/clean", s.handleCleanProviders)
 	mux.HandleFunc("/api/convert/k2r", s.handleConvertK2R)
 	mux.HandleFunc("/api/convert/r2k", s.handleConvertR2K)
 	mux.HandleFunc("/api/info", s.handleInfo)
 	mux.HandleFunc("/api/providers", s.handleProviders)
 	mux.HandleFunc("/api/assistants", s.handleAssistants)
 	mux.HandleFunc("/api/mcp", s.handleMCP)
+	mux.HandleFunc("/api/conversations/", s.handleConversations)
 	mux.HandleFunc("/api/conversations", s.handleConversations)
 	mux.HandleFunc("/api/lorebooks", s.handleLorebooks)
 	mux.HandleFunc("/api/quick-messages", s.handleQuickMessages)
@@ -73,13 +60,6 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(webUI)
-}
-
-func (s *Server) handleStatic(data []byte, contentType string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", contentType)
-		w.Write(data)
-	}
 }
 
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -451,6 +431,7 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := strings.TrimPrefix(r.URL.Path, "/api/conversations")
+	// The path could be empty, "/", or "/id"
 
 	switch s.backupType {
 	case "kelivo":
@@ -481,6 +462,9 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, convs)
 		} else {
 			convID := strings.TrimPrefix(path, "/")
+			// For URL encoding safe check
+			convID, _ = url.PathUnescape(convID)
+			
 			if s.kelivo.Chats == nil {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "未找到会话"})
 				return
@@ -535,6 +519,7 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, convs)
 		} else {
 			convID := strings.TrimPrefix(path, "/")
+			convID, _ = url.PathUnescape(convID)
 			var conv *models.RikkaHubConversation
 			for i := range s.rikkahub.Conversations {
 				if s.rikkahub.Conversations[i].ID == convID {
@@ -646,4 +631,54 @@ func truncateStr(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+func (s *Server) handleCleanProviders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST only"})
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.backupType == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "没有已上传的备份"})
+		return
+	}
+
+	cleanedCount := 0
+	deletedNames := []string{}
+
+	switch s.backupType {
+	case "kelivo":
+		if s.kelivo.Settings != nil && s.kelivo.Settings.ProviderConfigs != nil {
+			for id, p := range s.kelivo.Settings.ProviderConfigs {
+				if p.APIKey == "" {
+					deletedNames = append(deletedNames, p.Name)
+					delete(s.kelivo.Settings.ProviderConfigs, id)
+					cleanedCount++
+				}
+			}
+		}
+	case "rikkahub":
+		if s.rikkahub.Settings != nil && s.rikkahub.Settings.Providers != nil {
+			var newProviders []models.RikkaHubProvider
+			for _, p := range s.rikkahub.Settings.Providers {
+				if p.APIKey != "" {
+					newProviders = append(newProviders, p)
+				} else {
+					deletedNames = append(deletedNames, p.Name)
+					cleanedCount++
+				}
+			}
+			s.rikkahub.Settings.Providers = newProviders
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"cleanedCount": cleanedCount,
+		"deletedNames": deletedNames,
+	})
 }

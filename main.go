@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,7 +13,7 @@ import (
 	"github.com/converter/backup-converter/writer"
 )
 
-const version = "1.0.0"
+const version = "1.2.0"
 
 func printUsage() {
 	fmt.Printf(`备份转换工具 v%s
@@ -22,20 +23,23 @@ func printUsage() {
   backup-converter <命令> [选项]
 
 命令:
-  kelivo2rikkahub  将 Kelivo 备份转换为 RikkaHub 格式
-  rikkahub2kelivo  将 RikkaHub 备份转换为 Kelivo 格式
-  info             查看备份文件的详细信息
+  k2r, kelivo2rikkahub  将 Kelivo 备份转换为 RikkaHub 格式
+  r2k, rikkahub2kelivo  将 RikkaHub 备份转换为 Kelivo 格式
+  i, info               查看备份文件的详细信息
+  serve                 启动 Web 服务器（上传、转换、查看）
 
 选项:
-  -i, --input   <文件>    输入备份 zip 文件（必填）
+  -i, --input   <文件>    输入备份 zip 文件（必填，serve 除外）
   -o, --output  <文件>    输出备份 zip 文件（可选，不填自动生成）
+  -p, --port    <端口>    Web 服务器端口（默认 8080）
   -h, --help              显示帮助信息
   -v, --version           显示版本信息
 
 示例:
-  backup-converter kelivo2rikkahub -i kelivo_backup.zip -o rikkahub_backup.zip
-  backup-converter rikkahub2kelivo -i rikkahub_backup.zip -o kelivo_backup.zip
-  backup-converter info -i kelivo_backup.zip
+  backup-converter k2r -i kelivo_backup.zip -o rikkahub_backup.zip
+  backup-converter r2k -i rikkahub_backup.zip
+  backup-converter i kelivo_backup.zip
+  backup-converter serve -p 3000
 `, version)
 }
 
@@ -54,12 +58,14 @@ func main() {
 	case "-v", "--version", "version":
 		fmt.Printf("备份转换工具 v%s\n", version)
 		return
-	case "kelivo2rikkahub":
+	case "k2r", "kelivo2rikkahub":
 		handleKelivo2RikkaHub(os.Args[2:])
-	case "rikkahub2kelivo":
+	case "r2k", "rikkahub2kelivo":
 		handleRikkaHub2Kelivo(os.Args[2:])
-	case "info":
+	case "i", "info":
 		handleInfo(os.Args[2:])
+	case "serve":
+		handleServe(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "错误：未知命令 '%s'\n\n", command)
 		printUsage()
@@ -94,6 +100,29 @@ func parseArgs(args []string) (input, output string, err error) {
 		}
 	}
 	return input, output, nil
+}
+
+func parseServeArgs(args []string) string {
+	port := "8080"
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-p", "--port":
+			if i+1 >= len(args) {
+				fmt.Fprintf(os.Stderr, "错误：参数 %s 需要一个值\n", args[i])
+				os.Exit(1)
+			}
+			i++
+			port = args[i]
+		default:
+			port = args[i]
+		}
+	}
+	return port
+}
+
+func handleServe(args []string) {
+	port := parseServeArgs(args)
+	StartServer(port)
 }
 
 func handleKelivo2RikkaHub(args []string) {
@@ -299,6 +328,30 @@ func detectBackupType(zipPath string) string {
 		return "kelivo"
 	}
 
+	return "unknown"
+}
+
+func detectBackupTypeFromBytes(data []byte) string {
+	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return "unknown"
+	}
+	hasChatsJSON := false
+	hasRikkaHubDB := false
+	for _, f := range r.File {
+		switch f.Name {
+		case "chats.json":
+			hasChatsJSON = true
+		case "rikka_hub.db":
+			hasRikkaHubDB = true
+		}
+	}
+	if hasRikkaHubDB {
+		return "rikkahub"
+	}
+	if hasChatsJSON {
+		return "kelivo"
+	}
 	return "unknown"
 }
 

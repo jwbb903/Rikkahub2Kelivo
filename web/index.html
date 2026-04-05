@@ -2,243 +2,557 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Kelivo ↔ RikkaHub 备份转换器</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#2563eb', // blue-600
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'monospace'],
-                    }
-                }
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kelivo / RikkaHub 备份转换器</title>
+    <style>
+        /* Material Design 3 基础色彩系统 */
+        :root {
+            --md-sys-color-primary: #006493;
+            --md-sys-color-on-primary: #ffffff;
+            --md-sys-color-primary-container: #cae6ff;
+            --md-sys-color-on-primary-container: #001e30;
+            --md-sys-color-secondary-container: #d6e4f7;
+            --md-sys-color-surface: #fdfcff;
+            --md-sys-color-on-surface: #1a1c1e;
+            --md-sys-color-surface-variant: #dfe3eb;
+            --md-sys-color-outline: #73777f;
+            --md-sys-color-error: #ba1a1a;
+            
+            --border-radius: 16px;
+            --transition-speed: 0.3s;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 侧边栏 */
+        .sidebar {
+            width: 280px;
+            background-color: var(--md-sys-color-surface);
+            border-right: 1px solid var(--md-sys-color-surface-variant);
+            display: flex;
+            flex-direction: column;
+            transition: transform var(--transition-speed);
+            z-index: 100;
+        }
+
+        .sidebar-header {
+            padding: 24px;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--md-sys-color-primary);
+        }
+
+        .nav-list {
+            list-style: none;
+            padding: 0 12px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .nav-item {
+            padding: 16px 24px;
+            margin-bottom: 4px;
+            border-radius: 28px;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--md-sys-color-on-surface);
+            transition: background-color 0.2s;
+        }
+
+        .nav-item:hover {
+            background-color: var(--md-sys-color-surface-variant);
+        }
+
+        .nav-item.active {
+            background-color: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-primary-container);
+        }
+
+        /* 主内容区 */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* 修复：顶部栏背景色与层级 */
+        .topbar {
+            height: 64px;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            background-color: var(--md-sys-color-surface); /* 不透明背景 */
+            border-bottom: 1px solid var(--md-sys-color-surface-variant);
+            position: sticky;
+            top: 0;
+            z-index: 10; /* 确保在内容之上 */
+        }
+
+        .menu-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+            display: none;
+            color: var(--md-sys-color-on-surface);
+        }
+
+        .content-area {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            background-color: #f4f7fc;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background-color: var(--md-sys-color-surface);
+            border-radius: var(--border-radius);
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+        }
+
+        .card h2 {
+            margin-bottom: 16px;
+            font-size: 1.25rem;
+        }
+
+        /* 拖拽上传区 */
+        .upload-area {
+            border: 2px dashed var(--md-sys-color-outline);
+            border-radius: var(--border-radius);
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background-color: var(--md-sys-color-surface);
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            background-color: var(--md-sys-color-primary-container);
+            border-color: var(--md-sys-color-primary);
+        }
+
+        /* 修复：文件名称超长换行 */
+        .file-name-display {
+            margin-top: 12px;
+            font-weight: bold;
+            color: var(--md-sys-color-primary);
+            word-break: break-all;     /* 强制打断长单词 */
+            overflow-wrap: break-word; /* 允许在单词内换行 */
+            white-space: normal;       /* 正常换行 */
+            max-width: 100%;
+        }
+
+        /* 按钮样式 */
+        .btn {
+            background-color: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            border: none;
+            padding: 10px 24px;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            background-color: #00537a;
+        }
+
+        .btn-outline {
+            background-color: transparent;
+            color: var(--md-sys-color-primary);
+            border: 1px solid var(--md-sys-color-outline);
+        }
+
+        .btn-outline:hover {
+            background-color: var(--md-sys-color-surface-variant);
+        }
+        
+        .btn-error {
+            background-color: var(--md-sys-color-error);
+            color: white;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+
+        /* 表格样式 */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--md-sys-color-surface-variant);
+        }
+
+        th {
+            font-weight: 500;
+            color: var(--md-sys-color-outline);
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            background-color: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-surface);
+        }
+
+        /* 遮罩层 */
+        .backdrop {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 90;
+        }
+
+        .hidden { display: none !important; }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                height: 100%;
+                transform: translateX(-100%);
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .menu-btn {
+                display: block;
+            }
+            .backdrop.show {
+                display: block;
             }
         }
-    </script>
-    <!-- Inter & JetBrains Mono Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="css/style.css">
+    </style>
 </head>
-<body class="bg-slate-100 text-slate-900 h-screen overflow-hidden flex antialiased">
+<body>
 
-<!-- Sidebar -->
-<aside class="w-64 bg-white border-r border-slate-200 flex flex-col shadow-sm z-10 hidden md:flex">
-    <div class="p-6 border-b border-slate-200 flex items-center gap-3">
-        <i data-lucide="arrow-left-right" class="text-blue-600"></i>
-        <h1 class="font-bold text-lg text-slate-800">备份转换器</h1>
-    </div>
-    
-    <nav class="flex-1 overflow-y-auto py-4 space-y-1 px-3">
-        <a href="#" class="nav-item active group" data-page="overview">
-            <i data-lucide="layout-dashboard" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
-            <span class="flex-1">概览</span>
-        </a>
-        <a href="#" class="nav-item group" data-page="providers">
-            <i data-lucide="server" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
-            <span class="flex-1">提供商</span>
-            <span class="badge" id="badge-providers">0</span>
-        </a>
-        <a href="#" class="nav-item group" data-page="assistants">
-            <i data-lucide="bot" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
-            <span class="flex-1">助手</span>
-            <span class="badge" id="badge-assistants">0</span>
-        </a>
-        <a href="#" class="nav-item group" data-page="mcps">
-            <i data-lucide="plug" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
-            <span class="flex-1">MCP 服务器</span>
-            <span class="badge" id="badge-mcps">0</span>
-        </a>
-        <a href="#" class="nav-item group" data-page="conversations">
-            <i data-lucide="message-square" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
-            <span class="flex-1">聊天会话</span>
-            <span class="badge" id="badge-conversations">0</span>
-        </a>
-        <a href="#" class="nav-item group" data-page="lorebooks">
-            <i data-lucide="book-open" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
-            <span class="flex-1">世界书 / 设定</span>
-            <span class="badge" id="badge-lorebooks">0</span>
-        </a>
-        <a href="#" class="nav-item group" data-page="quickmsgs">
-            <i data-lucide="zap" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
-            <span class="flex-1">快捷短语</span>
-            <span class="badge" id="badge-quickmsgs">0</span>
-        </a>
-        <a href="#" class="nav-item group" data-page="injections">
-            <i data-lucide="syringe" class="w-5 h-5 mr-3 text-slate-400 group-[.active]:text-blue-600"></i>
-            <span class="flex-1">指令注入</span>
-            <span class="badge" id="badge-injections">0</span>
-        </a>
-    </nav>
-</aside>
+    <div class="backdrop" id="backdrop" onclick="toggleSidebar()"></div>
 
-<!-- Main Content -->
-<main class="flex-1 flex flex-col overflow-hidden bg-slate-50 relative">
-    <!-- Top Bar -->
-    <header class="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shadow-sm shrink-0 z-10">
-        <div class="flex items-center gap-4">
-            <div class="relative overflow-hidden inline-block group">
-                <button class="btn-primary flex items-center gap-2">
-                    <i data-lucide="upload-cloud" class="w-5 h-5"></i>
-                    <span class="hidden md:inline">选择备份文件 (.zip)</span>
-                    <span class="md:hidden">上传</span>
-                </button>
-                <input type="file" id="file-input" accept=".zip" class="absolute inset-0 opacity-0 cursor-pointer text-[100px]">
-            </div>
-            <div id="status-container" class="hidden md:flex items-center gap-2 text-slate-500 text-sm font-medium">
-                <i data-lucide="info" class="w-4 h-4"></i>
-                <span id="status-text">未上传文件</span>
-            </div>
-        </div>
-        <div class="flex gap-2 md:gap-3">
-            <button id="btn-k2r" class="btn-outline flex items-center gap-2" disabled>
-                <i data-lucide="arrow-right-circle" class="w-4 h-4"></i>
-                <span class="hidden md:inline">转为 RikkaHub</span>
-            </button>
-            <button id="btn-r2k" class="btn-outline flex items-center gap-2" disabled>
-                <i data-lucide="arrow-left-circle" class="w-4 h-4"></i>
-                <span class="hidden md:inline">转为 Kelivo</span>
-            </button>
-        </div>
-    </header>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">备份转换器</div>
+        <ul class="nav-list">
+            <li class="nav-item active" onclick="switchTab('home')">主页 & 转换</li>
+            <li class="nav-item" onclick="switchTab('providers')">模型提供商 (Providers)</li>
+            <li class="nav-item" onclick="switchTab('assistants')">助手 (Assistants)</li>
+            <li class="nav-item" onclick="switchTab('conversations')">会话 (Conversations)</li>
+        </ul>
+    </aside>
 
-    <!-- Pages Area -->
-    <div class="flex-1 overflow-y-auto p-4 md:p-8 relative" id="paste-zone">
-        
-        <!-- Overview Page -->
-        <div id="page-overview" class="page active max-w-4xl mx-auto mt-4 md:mt-10">
-            <div class="text-center mb-12">
-                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-50 text-blue-600 mb-6 border border-blue-100 shadow-sm">
-                    <i data-lucide="database" class="w-8 h-8"></i>
-                </div>
-                <h2 class="text-3xl font-bold text-slate-900 mb-4">欢迎使用备份转换器</h2>
-                <p class="text-slate-500 text-lg">点击上方按钮或拖拽 Kelivo / RikkaHub 备份 zip 文件到此区域，系统将自动识别解析。</p>
-            </div>
+    <div class="main-content">
+        <header class="topbar">
+            <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+            <h2 id="topbar-title" style="margin-left: 16px; font-size: 1.1rem; font-weight: 500;">主页</h2>
+        </header>
+
+        <div class="content-area">
             
-            <div id="overview-info" class="hidden">
-                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                        <div class="flex items-center gap-3">
-                            <i data-lucide="file-check-2" class="text-blue-600 w-6 h-6"></i>
-                            <h3 class="font-bold text-lg text-slate-800">备份详情</h3>
-                        </div>
-                        <span class="px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm font-medium border border-green-200" id="overview-type"></span>
+            <div id="tab-home">
+                <div class="card">
+                    <h2>1. 上传备份文件</h2>
+                    <input type="file" id="fileInput" accept=".zip" class="hidden" onchange="handleFileSelect(event)">
+                    <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="var(--md-sys-color-primary)"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+                        <p style="margin-top: 16px; color: var(--md-sys-color-outline);">点击或拖拽 ZIP 备份文件到此处</p>
+                        <div id="uploadStatus" class="file-name-display"></div>
                     </div>
-                    <div class="p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6" id="overview-details">
-                        <!-- Dynamic Content -->
+                </div>
+
+                <div class="card hidden" id="backupInfoCard">
+                    <h2>2. 备份信息与操作</h2>
+                    <div id="backupStats" style="margin-bottom: 24px; line-height: 1.6;"></div>
+                    
+                    <div class="actions">
+                        <button class="btn btn-outline" onclick="cleanProviders()" id="btnClean">
+                            清理无 Key 提供商
+                        </button>
+                        <button class="btn" onclick="convertBackup('k2r')" id="btnK2R" style="display: none;">
+                            转换为 RikkaHub 格式
+                        </button>
+                        <button class="btn" onclick="convertBackup('r2k')" id="btnR2K" style="display: none;">
+                            转换为 Kelivo 格式
+                        </button>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Providers Page -->
-        <div id="page-providers" class="page hidden">
-            <h2 class="page-title">提供商</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="list-providers"></div>
-        </div>
-
-        <!-- Assistants Page -->
-        <div id="page-assistants" class="page hidden">
-            <h2 class="page-title">助手</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="list-assistants"></div>
-        </div>
-
-        <!-- MCP Page -->
-        <div id="page-mcps" class="page hidden">
-            <h2 class="page-title">MCP 服务器</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="list-mcps"></div>
-        </div>
-
-        <!-- Conversations Page -->
-        <div id="page-conversations" class="page hidden max-w-5xl mx-auto">
-            <h2 class="page-title">聊天会话</h2>
-            <div class="space-y-4" id="list-conversations"></div>
-        </div>
-        
-        <!-- Chat View Page -->
-        <div id="page-chat-view" class="page hidden max-w-5xl mx-auto h-full flex flex-col">
-            <div class="flex items-center gap-4 mb-6 pb-4 border-b border-slate-200 shrink-0">
-                <button class="btn-ghost flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors px-3 py-2 rounded-lg hover:bg-slate-100" id="btn-back-chats">
-                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                    返回
-                </button>
-                <h2 class="text-xl font-bold text-slate-800 truncate flex-1" id="chat-title">会话内容</h2>
+            <div id="tab-providers" class="hidden">
+                <div class="card">
+                    <h2>Providers 列表</h2>
+                    <div style="overflow-x: auto;">
+                        <table id="providersTable">
+                            <thead><tr><th>名称</th><th>类型</th><th>状态</th><th>API Key</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
-            <div class="flex-1 overflow-y-auto pr-4 space-y-6 pb-10" id="chat-messages-container"></div>
-        </div>
 
-        <!-- Lorebooks Page -->
-        <div id="page-lorebooks" class="page hidden">
-            <h2 class="page-title">世界书 / 设定集</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="list-lorebooks"></div>
-        </div>
+            <div id="tab-assistants" class="hidden">
+                <div class="card">
+                    <h2>Assistants 列表</h2>
+                    <div style="overflow-x: auto;">
+                        <table id="assistantsTable">
+                            <thead><tr><th>名称</th><th>模型 ID</th><th>温度</th><th>系统提示词</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
-        <!-- Quick Msgs Page -->
-        <div id="page-quickmsgs" class="page hidden">
-            <h2 class="page-title">快捷短语</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="list-quickmsgs"></div>
-        </div>
+            <div id="tab-conversations" class="hidden">
+                <div class="card">
+                    <h2>Conversations 列表</h2>
+                    <div style="overflow-x: auto;">
+                        <table id="conversationsTable">
+                            <thead><tr><th>标题</th><th>消息数量</th><th>创建时间</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
-        <!-- Injections Page -->
-        <div id="page-injections" class="page hidden">
-            <h2 class="page-title">指令注入</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="list-injections"></div>
         </div>
     </div>
-    
-    <!-- Mobile Tab Bar -->
-    <nav class="md:hidden flex bg-white border-t border-slate-200 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 pb-safe">
-        <div class="flex w-full overflow-x-auto hide-scrollbar">
-            <a href="#" class="mobile-nav-item active" data-page="overview">
-                <i data-lucide="layout-dashboard" class="w-5 h-5 mb-1"></i>
-                <span class="text-[10px]">概览</span>
-            </a>
-            <a href="#" class="mobile-nav-item" data-page="providers">
-                <i data-lucide="server" class="w-5 h-5 mb-1"></i>
-                <span class="text-[10px]">提供商</span>
-            </a>
-            <a href="#" class="mobile-nav-item" data-page="assistants">
-                <i data-lucide="bot" class="w-5 h-5 mb-1"></i>
-                <span class="text-[10px]">助手</span>
-            </a>
-            <a href="#" class="mobile-nav-item" data-page="mcps">
-                <i data-lucide="plug" class="w-5 h-5 mb-1"></i>
-                <span class="text-[10px]">MCP</span>
-            </a>
-            <a href="#" class="mobile-nav-item" data-page="conversations">
-                <i data-lucide="message-square" class="w-5 h-5 mb-1"></i>
-                <span class="text-[10px]">会话</span>
-            </a>
-        </div>
-    </nav>
-</main>
 
-<!-- Loading Overlay -->
-<div id="loading" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm hidden justify-center items-center z-50 transition-opacity">
-    <div class="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center gap-4">
-        <i data-lucide="loader-2" class="w-10 h-10 text-blue-600 animate-spin"></i>
-        <span class="text-slate-700 font-medium" id="loading-text">处理中...</span>
-    </div>
-</div>
+    <script>
+        let currentBackupType = "";
 
-<!-- Toast Container -->
-<div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+        // UI 交互
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const backdrop = document.getElementById('backdrop');
+            sidebar.classList.toggle('open');
+            backdrop.classList.toggle('show');
+        }
 
-<!-- Scripts -->
-<script src="js/api.js"></script>
-<script src="js/render.js"></script>
-<script src="js/app.js"></script>
-<script>
-    lucide.createIcons();
-</script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.content-area > div').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            event.currentTarget.classList.add('active');
+            document.getElementById('topbar-title').innerText = event.currentTarget.innerText;
 
+            if (window.innerWidth <= 768) toggleSidebar();
+
+            // 如果切换到数据 Tab，自动拉取数据
+            if (tabId === 'providers') fetchData('/api/providers', renderProviders);
+            if (tabId === 'assistants') fetchData('/api/assistants', renderAssistants);
+            if (tabId === 'conversations') fetchData('/api/conversations', renderConversations);
+        }
+
+        // 拖拽上传逻辑
+        function handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('dragover'); }
+        function handleDragLeave(e) { e.currentTarget.classList.remove('dragover'); }
+        function handleDrop(e) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                uploadFile(e.dataTransfer.files[0]);
+            }
+        }
+        function handleFileSelect(e) {
+            if (e.target.files.length > 0) {
+                uploadFile(e.target.files[0]);
+            }
+        }
+
+        async function uploadFile(file) {
+            const statusEl = document.getElementById('uploadStatus');
+            statusEl.innerText = `正在上传并解析: ${file.name}...`;
+            statusEl.style.color = 'var(--md-sys-color-primary)';
+            
+            const formData = new FormData();
+            formData.append("file", file);
+
+            try {
+                const res = await fetch('/api/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                
+                if (!res.ok) throw new Error(data.error || '上传失败');
+
+                currentBackupType = data.type;
+                statusEl.innerText = `成功加载: ${data.filename}`;
+                statusEl.style.color = 'green';
+                
+                showBackupInfo(data);
+            } catch (err) {
+                statusEl.innerText = `错误: ${err.message}`;
+                statusEl.style.color = 'var(--md-sys-color-error)';
+            }
+            // 清空 input 以便重复上传同一个文件
+            document.getElementById('fileInput').value = '';
+        }
+
+        function showBackupInfo(data) {
+            document.getElementById('backupInfoCard').classList.remove('hidden');
+            
+            let html = `<strong>当前备份类型:</strong> <span class="badge" style="background: var(--md-sys-color-primary); color: white;">${data.type.toUpperCase()}</span><br>`;
+            if(data.providers !== undefined) html += `<strong>提供商配置 (Providers):</strong> ${data.providers}<br>`;
+            if(data.assistants !== undefined) html += `<strong>助手 (Assistants):</strong> ${data.assistants}<br>`;
+            if(data.conversations !== undefined) html += `<strong>会话数:</strong> ${data.conversations}<br>`;
+            if(data.messages !== undefined) html += `<strong>消息数:</strong> ${data.messages}<br>`;
+            if(data.messageNodes !== undefined) html += `<strong>消息节点数:</strong> ${data.messageNodes}<br>`;
+            
+            document.getElementById('backupStats').innerHTML = html;
+
+            document.getElementById('btnK2R').style.display = data.type === 'kelivo' ? 'inline-flex' : 'none';
+            document.getElementById('btnR2K').style.display = data.type === 'rikkahub' ? 'inline-flex' : 'none';
+        }
+
+        // 转换与下载逻辑
+        async function convertBackup(type) {
+            try {
+                const res = await fetch(`/api/convert/${type}`, { method: 'POST' });
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.error || '转换失败');
+                }
+                
+                // 处理文件下载
+                const blob = await res.blob();
+                const disposition = res.headers.get('Content-Disposition');
+                let filename = 'converted_backup.zip';
+                if (disposition && disposition.indexOf('filename=') !== -1) {
+                    const matches = /filename="([^"]+)"/.exec(disposition);
+                    if (matches != null && matches[1]) filename = matches[1];
+                }
+
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } catch (err) {
+                alert(`转换错误: ${err.message}`);
+            }
+        }
+
+        // 清理 Providers
+        async function cleanProviders() {
+            if (!confirm('确定要清理所有没有 API Key 的提供商配置吗？')) return;
+            try {
+                const res = await fetch('/api/providers/clean', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+                alert(`清理成功！共删除了 ${data.cleanedCount} 个空密钥提供商。\n已删除：${data.deletedNames.join(', ')}`);
+                // 刷新首页统计
+                fetchData('/api/info', showBackupInfo);
+            } catch (err) {
+                alert(`清理错误: ${err.message}`);
+            }
+        }
+
+        // 通用数据拉取与渲染
+        async function fetchData(url, renderCallback) {
+            if(!currentBackupType) return; // 还没上传不拉数据
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('拉取数据失败');
+                const data = await res.json();
+                renderCallback(data);
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function renderProviders(data) {
+            const tbody = document.querySelector('#providersTable tbody');
+            tbody.innerHTML = '';
+            if(!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">暂无数据</td></tr>';
+                return;
+            }
+            data.forEach(p => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${p.name || '-'}</td>
+                        <td><span class="badge">${p.type || p.providerType || 'unknown'}</span></td>
+                        <td>${p.enabled ? '✅ 启用' : '❌ 禁用'}</td>
+                        <td>${p.hasApiKey ? '🔑 已配置' : '⚠️ 无密钥'}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function renderAssistants(data) {
+            const tbody = document.querySelector('#assistantsTable tbody');
+            tbody.innerHTML = '';
+            if(!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">暂无数据</td></tr>';
+                return;
+            }
+            data.forEach(a => {
+                const prompt = a.systemPrompt ? (a.systemPrompt.substring(0, 30) + '...') : '-';
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${a.name || '-'}</strong></td>
+                        <td><span class="badge">${a.chatModelId || '-'}</span></td>
+                        <td>${a.temperature !== undefined ? a.temperature : '-'}</td>
+                        <td title="${a.systemPrompt || ''}">${prompt}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function renderConversations(data) {
+            const tbody = document.querySelector('#conversationsTable tbody');
+            tbody.innerHTML = '';
+            if(!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3">暂无数据</td></tr>';
+                return;
+            }
+            data.forEach(c => {
+                const date = c.createdAt || c.updatedAt ? new Date(c.createdAt || c.updatedAt).toLocaleString() : '-';
+                const count = c.messageCount !== undefined ? c.messageCount : (c.nodeCount !== undefined ? c.nodeCount : 0);
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${c.title || '未命名会话'}</strong> ${c.isPinned ? '📌' : ''}</td>
+                        <td><span class="badge">${count} 条</span></td>
+                        <td>${date}</td>
+                    </tr>
+                `;
+            });
+        }
+    </script>
 </body>
 </html>

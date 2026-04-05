@@ -152,16 +152,34 @@ func convertRikkaHubProviders(
 	result := make(map[string]models.KelivoProvider)
 
 	for _, rp := range providers {
+		// Check if this is a built-in RikkaHub provider
+		mapping := findBuiltinByRikkaHubID(rp.ID)
+
+		var kelivoID string
+		if mapping != nil {
+			// Built-in provider: use Kelivo's built-in key as ID
+			kelivoID = mapping.KelivoID
+		} else {
+			// Custom provider: use original ID
+			kelivoID = rp.ID
+		}
+
 		var modelIDs []string
 		modelOverrides := make(map[string]models.KelivoModelOverride)
 
 		for _, rm := range rp.Models {
 			modelIDs = append(modelIDs, rm.ModelID)
 
-			// Store mapping
-			mapKey := fmt.Sprintf("%s::%s", rp.ID, rm.ModelID)
+			// Store mapping using the Kelivo provider key
+			mapKey := fmt.Sprintf("%s::%s", kelivoID, rm.ModelID)
 			modelIDMap[rm.ID] = mapKey
-			modelToProvider[rm.ID] = rp.ID
+			modelToProvider[rm.ID] = kelivoID
+
+			// Also store mapping using the RikkaHub provider ID for resolution
+			mapKey2 := fmt.Sprintf("%s::%s", rp.ID, rm.ModelID)
+			if mapKey2 != mapKey {
+				modelIDMap[rm.ID] = mapKey
+			}
 
 			// Build model override
 			override := models.KelivoModelOverride{
@@ -174,7 +192,7 @@ func convertRikkaHubProviders(
 		}
 
 		kp := models.KelivoProvider{
-			ID:             rp.ID,
+			ID:             kelivoID,
 			Enabled:        rp.Enabled,
 			Name:           rp.Name,
 			APIKey:         rp.APIKey,
@@ -193,10 +211,7 @@ func convertRikkaHubProviders(
 			},
 		}
 
-		// Convert headers to custom fields if any
-		// (RikkaHub headers -> Kelivo doesn't have direct equivalent)
-
-		result[rp.ID] = kp
+		result[kelivoID] = kp
 	}
 
 	return result, nil
@@ -555,9 +570,59 @@ func convertRikkaHubMessageToKelivo(
 ) models.KelivoMessage {
 	// Build content from parts
 	var contentParts []string
+	var reasoningText *string
+
 	for _, part := range msg.Parts {
-		if part.Type == "text" && part.Text != "" {
-			contentParts = append(contentParts, part.Text)
+		switch part.Type {
+		case "text":
+			if part.Text != "" {
+				contentParts = append(contentParts, part.Text)
+			}
+		case "image":
+			if part.URL != "" {
+				path := stripFilePrefix(part.URL)
+				contentParts = append(contentParts, fmt.Sprintf("[image:%s]", path))
+			}
+		case "video":
+			if part.URL != "" {
+				path := stripFilePrefix(part.URL)
+				name := part.FileName
+				if name == "" {
+					name = "video.mp4"
+				}
+				contentParts = append(contentParts, fmt.Sprintf("[file:%s|%s|video/mp4]", path, name))
+			}
+		case "audio":
+			if part.URL != "" {
+				path := stripFilePrefix(part.URL)
+				name := part.FileName
+				if name == "" {
+					name = "audio.wav"
+				}
+				mime := part.MimeType
+				if mime == "" {
+					mime = "audio/wav"
+				}
+				contentParts = append(contentParts, fmt.Sprintf("[file:%s|%s|%s]", path, name, mime))
+			}
+		case "document":
+			if part.URL != "" {
+				path := stripFilePrefix(part.URL)
+				name := part.FileName
+				if name == "" {
+					name = "file"
+				}
+				mime := part.MimeType
+				if mime == "" {
+					mime = "application/octet-stream"
+				}
+				contentParts = append(contentParts, fmt.Sprintf("[file:%s|%s|%s]", path, name, mime))
+			}
+		case "reasoning":
+			if part.Reasoning != "" {
+				s := part.Reasoning
+				reasoningText = &s
+			}
 		}
 	}
 	content := strings.Join(contentParts, "\n")
@@ -593,22 +658,31 @@ func convertRikkaHubMessageToKelivo(
 	}
 
 	return models.KelivoMessage{
-		ID:             msg.ID,
-		Role:           msg.Role,
-		Content:        content,
-		Timestamp:      timestamp,
-		ModelID:        modelID,
-		ProviderID:     providerID,
-		TotalTokens:    totalTokens,
-		ConversationID: convID,
-		IsStreaming:    false,
-		GroupID:        groupID,
-		Version:        version,
-		Translation:    msg.Translation,
+		ID:                msg.ID,
+		Role:              msg.Role,
+		Content:           content,
+		Timestamp:         timestamp,
+		ModelID:           modelID,
+		ProviderID:        providerID,
+		TotalTokens:       totalTokens,
+		ConversationID:    convID,
+		IsStreaming:       false,
+		GroupID:           groupID,
+		Version:           version,
+		Translation:       msg.Translation,
+		ReasoningText:     reasoningText,
 	}
 }
 
 func millisecondsToTimestamp(ms int64) string {
 	t := time.UnixMilli(ms).UTC()
 	return t.Format("2006-01-02T15:04:05.000")
+}
+
+// stripFilePrefix removes the "file://" prefix from a URL if present
+func stripFilePrefix(url string) string {
+	if strings.HasPrefix(url, "file://") {
+		return url[len("file://"):]
+	}
+	return url
 }

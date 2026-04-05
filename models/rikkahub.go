@@ -309,15 +309,28 @@ type RikkaHubMessage struct {
 	Translation *string               `json:"translation"`
 }
 
-// RikkaHubMessagePart represents a part of a message
+// RikkaHubMessagePart represents a part of a message (union type based on type field)
+// type can be: "text", "image", "video", "audio", "document", "reasoning", "tool"
 type RikkaHubMessagePart struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
-	// For image/file parts
-	MimeType string          `json:"mimeType,omitempty"`
-	Data     string          `json:"data,omitempty"`
+	// For image/video/audio parts
+	URL string `json:"url,omitempty"`
+	// For document parts
+	FileName string `json:"fileName,omitempty"`
+	MimeType string `json:"mimeType,omitempty"`
+	// For reasoning parts
+	Reasoning      string          `json:"reasoning,omitempty"`
+	ReasoningSteps json.RawMessage `json:"steps,omitempty"`
+	// For tool parts
+	ToolCallID    string          `json:"toolCallId,omitempty"`
+	ToolName      string          `json:"toolName,omitempty"`
+	ToolInput     string          `json:"input,omitempty"`
+	ToolOutput    json.RawMessage `json:"output,omitempty"`
+	ApprovalState string          `json:"approvalState,omitempty"`
+	// Common
 	FileID   string          `json:"fileId,omitempty"`
-	URL      string          `json:"url,omitempty"`
+	Data     string          `json:"data,omitempty"`
 	Metadata json.RawMessage `json:"metadata,omitempty"`
 	Priority int             `json:"priority,omitempty"`
 }

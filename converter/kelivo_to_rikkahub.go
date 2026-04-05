@@ -3,6 +3,7 @@ package converter
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -167,34 +168,78 @@ func convertKelivoProviders(providerConfigs map[string]models.KelivoProvider, mo
 	var providers []models.RikkaHubProvider
 
 	for _, kp := range providerConfigs {
-		rp := models.RikkaHubProvider{
-			Type:    mapProviderType(kp.ProviderType),
-			ID:      kp.ID,
-			Enabled: kp.Enabled,
-			Name:    kp.Name,
-			APIKey:  kp.APIKey,
-			BaseURL: kp.BaseURL,
-			Headers: []models.RikkaHubHeader{},
-			BalanceOption: models.RikkaHubBalanceOption{
-				Enabled:    false,
-				APIPath:    "/credits",
-				ResultPath: "data.total_balance",
-			},
-		}
+		// Check if this provider matches a built-in RikkaHub provider by base URL + type
+		mapping := findBuiltinByKelivo(kp.BaseURL, kp.ProviderType)
 
-		// Build models list
-		var models []models.RikkaHubModel
-		for _, modelID := range kp.Models {
-			override, hasOverride := kp.ModelOverrides[modelID]
-			mID := uuid.New().String()
-			mapKey := fmt.Sprintf("%s::%s", kp.ID, modelID)
-			modelIDMap[mapKey] = mID
+		if mapping != nil {
+			// Built-in provider: use RikkaHub's built-in ID, Only transfer apiKey and user-added models.
+			rp := models.RikkaHubProvider{
+				Type:    mapping.RikkaHubType,
+				ID:      mapping.RikkaHubID,
+				Enabled: kp.Enabled,
+				Name:    mapping.RikkaHubName,
+				APIKey:  kp.APIKey,
+				BaseURL: mapping.RikkaHubType, // will be set by RikkaHub's default
+				Headers: []models.RikkaHubHeader{},
+				BalanceOption: models.RikkaHubBalanceOption{
+					Enabled:    false,
+					APIPath:    "/credits",
+					ResultPath: "data.total_balance",
+				},
+			}
 
-			rm := buildRikkaHubModel(modelID, mID, override, hasOverride)
-			models = append(models, rm)
+			// Map models using the built-in provider ID as the key prefix
+			for _, modelID := range kp.Models {
+				override, hasOverride := kp.ModelOverrides[modelID]
+				mID := uuid.New().String()
+				mapKey := fmt.Sprintf("%s::%s", mapping.RikkaHubID, modelID)
+				modelIDMap[mapKey] = mID
+
+				rm := buildRikkaHubModel(modelID, mID, override, hasOverride)
+				rp.Models = append(rp.Models, rm)
+			}
+
+			// Also map with original Kelivo key for model reference resolution
+			for _, modelID := range kp.Models {
+				mapKey := fmt.Sprintf("%s::%s", kp.ID, modelID)
+				if _, exists := modelIDMap[mapKey]; !exists {
+					mapKey2 := fmt.Sprintf("%s::%s", mapping.RikkaHubID, modelID)
+					if id, ok := modelIDMap[mapKey2]; ok {
+						modelIDMap[mapKey] = id
+					}
+				}
+			}
+
+			providers = append(providers, rp)
+		} else {
+			// Custom (non-built-in) provider: create a new provider entry
+			rp := models.RikkaHubProvider{
+				Type:    mapProviderType(kp.ProviderType),
+				ID:      kp.ID,
+				Enabled: kp.Enabled,
+				Name:    kp.Name,
+				APIKey:  kp.APIKey,
+				BaseURL: kp.BaseURL,
+				Headers: []models.RikkaHubHeader{},
+				BalanceOption: models.RikkaHubBalanceOption{
+					Enabled:    false,
+					APIPath:    "/credits",
+					ResultPath: "data.total_balance",
+				},
+			}
+
+			for _, modelID := range kp.Models {
+				override, hasOverride := kp.ModelOverrides[modelID]
+				mID := uuid.New().String()
+				mapKey := fmt.Sprintf("%s::%s", kp.ID, modelID)
+				modelIDMap[mapKey] = mID
+
+				rm := buildRikkaHubModel(modelID, mID, override, hasOverride)
+				rp.Models = append(rp.Models, rm)
+			}
+
+			providers = append(providers, rp)
 		}
-		rp.Models = models
-		providers = append(providers, rp)
 	}
 
 	return providers
@@ -719,14 +764,24 @@ func buildMessageNodes(
 }
 
 func convertKelivoMessageToRikkaHub(msg models.KelivoMessage, modelIDMap map[string]string) models.RikkaHubMessage {
-	// Convert content to parts
 	parts := []models.RikkaHubMessagePart{}
 
-	if msg.Content != "" {
+	// Parse inline attachments from content: [image:<path>] and [file:<path>|<name>|<mime>]
+	textContent := extractTextAndAttachments(msg.Content, &parts)
+
+	// Add remaining text content as a text part if non-empty
+	if strings.TrimSpace(textContent) != "" {
 		parts = append(parts, models.RikkaHubMessagePart{
-			Type:     "text",
-			Text:     msg.Content,
-			Priority: 0,
+			Type: "text",
+			Text: textContent,
+		})
+	}
+
+	if msg.ReasoningText != nil && *msg.ReasoningText != "" {
+		parts = append(parts, models.RikkaHubMessagePart{
+			Type:      "reasoning",
+			Reasoning: *msg.ReasoningText,
+			Priority:  0,
 		})
 	}
 
@@ -766,6 +821,79 @@ func convertKelivoMessageToRikkaHub(msg models.KelivoMessage, modelIDMap map[str
 		Usage:       usage,
 		Translation: msg.Translation,
 	}
+}
+
+// Regex patterns for Kelivo inline attachment tags
+var (
+	imageTagRe = regexp.MustCompile(`\[image:([^\]]+)\]`)
+	fileTagRe  = regexp.MustCompile(`\[file:([^\]|]+)\|([^\]|]*)\|([^\]]+)\]`)
+)
+
+// extractTextAndAttachments parses Kelivo's inline attachment tags from message content.
+// It appends extracted attachments as RikkaHubMessagePart to parts and returns
+// the remaining text content with all attachment tags stripped out.
+// Kelivo formats: [image:<path>] and [file:<path>|<name>|<mime>]
+func extractTextAndAttachments(content string, parts *[]models.RikkaHubMessagePart) string {
+	text := content
+
+	// Extract [file:<path>|<name>|<mime>] tags first (before image, since image is simpler)
+	text = fileTagRe.ReplaceAllStringFunc(text, func(match string) string {
+		groups := fileTagRe.FindStringSubmatch(match)
+		if len(groups) != 4 {
+			return ""
+		}
+		path := groups[1]
+		fileName := groups[2]
+		mime := groups[3]
+
+		url := path
+		if !strings.HasPrefix(url, "file://") && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			url = "file://" + url
+		}
+
+		switch {
+		case strings.HasPrefix(mime, "video/"):
+			*parts = append(*parts, models.RikkaHubMessagePart{
+				Type: "video",
+				URL:  url,
+			})
+		case strings.HasPrefix(mime, "audio/"):
+			*parts = append(*parts, models.RikkaHubMessagePart{
+				Type: "audio",
+				URL:  url,
+			})
+		default:
+			*parts = append(*parts, models.RikkaHubMessagePart{
+				Type:     "document",
+				URL:      url,
+				FileName: fileName,
+				MimeType: mime,
+			})
+		}
+		return ""
+	})
+
+	// Extract [image:<path>] tags
+	text = imageTagRe.ReplaceAllStringFunc(text, func(match string) string {
+		groups := imageTagRe.FindStringSubmatch(match)
+		if len(groups) != 2 {
+			return ""
+		}
+		path := groups[1]
+
+		url := path
+		if !strings.HasPrefix(url, "file://") && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			url = "file://" + url
+		}
+
+		*parts = append(*parts, models.RikkaHubMessagePart{
+			Type: "image",
+			URL:  url,
+		})
+		return ""
+	})
+
+	return text
 }
 
 func parseTimestamp(ts string) int64 {
